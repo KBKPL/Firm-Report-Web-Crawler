@@ -17,6 +17,11 @@ from text_utils import find_paragraphs_with_keyword
 from html_utils import find_paragraphs_from_html
 from docx_utils import write_paragraphs_to_docx
 from bs4 import BeautifulSoup  # for extracting full page text
+from docx import Document
+from docx.enum.text import WD_COLOR_INDEX
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.opc.constants import RELATIONSHIP_TYPE
 
 API_LIST_URL = "https://server.comein.cn/comein/irmcenter/anonymous/irstore/report/list"
 PAGE_SIZE = 10
@@ -85,115 +90,105 @@ def fetch_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_
         logging.error(f"Error fetching report list: {e}")
         return []
 
+def add_hyperlink(paragraph, url):
+    part = paragraph.part
+    r_id = part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+    hyperlink = OxmlElement('w:hyperlink')
+    hyperlink.set(qn('r:id'), r_id)
+    new_run = OxmlElement('w:r')
+    rPr = OxmlElement('w:rPr')
+    i = OxmlElement('w:i')
+    rPr.append(i)
+    new_run.append(rPr)
+    text_elem = OxmlElement('w:t')
+    text_elem.text = url
+    new_run.append(text_elem)
+    hyperlink.append(new_run)
+    paragraph._p.append(hyperlink)
 
-def crawl_company(full_code: str, keywords: list[str], output_dir: str = "results", start_date: str = None):
-    """Crawl all reports for given company and extract paragraphs for each keyword."""
+def crawl_company(full_code: str, keywords: list[str], output_dir: str = "results", start_date: str = None, end_date: str = None):
     os.makedirs(output_dir, exist_ok=True)
-    # filter records published before start_date (YYYY-MM-DD)
-    # start_date None means no filter
-    page_index = 0  # 0-based page number for pagination
-    while True:
-        logging.info(f"Fetching page: {page_index}")
-        records = fetch_report_page(full_code, page_index, PAGE_SIZE)
-        if not records:
-            break
-        for rec in records:
-            # skip records before start_date
-            pub_date = rec.get("publishDate", "").split()[0]
-            if start_date and pub_date and pub_date < start_date:
-                logging.info(f"Skipping record {rec.get('id')} published on {pub_date}")
-                continue
-            rec_id = rec.get('id')
-            raw_url = rec.get('url')
-            logging.info(raw_url)
-            if not raw_url or '/report/detail' in raw_url:
-                detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec.get('reportId') or rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
-                logging.info(f"Rendering HTML for record {rec_id} from: {detail_url}")
-                html_text = fetch_rendered_html(detail_url)
-                if not html_text:
+    for kw in keywords:
+        doc = Document()
+        page_index = 0
+        while True:
+            logging.info(f"Fetching page: {page_index}")
+            records = fetch_report_page(full_code, page_index, PAGE_SIZE)
+            if not records:
+                break
+            break_page = False
+            for rec in records:
+                pub_date = rec.get("publishDate", "").split()[0]
+                if end_date and pub_date > end_date:
                     continue
-                # save webpage as PDF snapshot
-                safe_title = re.sub(r'\W+', '_', rec.get('title','')).strip('_')
-                safe_author = re.sub(r'\W+', '_', rec.get('author','')).strip('_')
-                pdf_dir = 'original files'
-                os.makedirs(pdf_dir, exist_ok=True)
-                pdf_name = f"{full_code}_{safe_title}_{safe_author}.pdf"
-                pdf_path = os.path.join(pdf_dir, pdf_name)
-                save_page_as_pdf(detail_url, pdf_path)
-                logging.info(f"Saved PDF {pdf_name}")
-                # extract full text and search paragraphs
-                page_text = BeautifulSoup(html_text, "lxml").get_text("\n")
-                for kw in keywords:
-                    paras = find_paragraphs_with_keyword(page_text, kw)
-                    if not paras:
+                if start_date and pub_date and pub_date < start_date:
+                    break_page = True
+                    break
+                rec_id = rec.get('id')
+                raw_url = rec.get('url')
+                if not raw_url or '/report/detail' in raw_url:
+                    detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec.get('reportId') or rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
+                    html_text = fetch_rendered_html(detail_url)
+                    if not html_text:
                         continue
-                    safe_title = re.sub(r'\W+', '_', rec.get('title','')).strip('_')
-                    date = rec.get('publishDate','').split()[0]
-                    safe_kw = kw.replace(' ', '_')
-                    out_file = f"{full_code}_{safe_title}_{safe_kw}_{date}.docx"
-                    out_path = os.path.join(output_dir, out_file)
-                    write_paragraphs_to_docx(paras, out_path, kw)
-                continue
-            # PDF handling
-            # always use file-view preview to fetch PDF bytes
-            if 'onlinePreview' in raw_url:
-                preview_url = raw_url
-            else:
-                b64 = base64.urlsafe_b64encode(raw_url.encode()).decode()
-                preview_url = (
-                    f"https://file-view.comein.cn/onlinePreview?url={b64}"
-                    "&officePreviewSwitchDisabled=true"
-                    "&officePreviewType=pdf"
-                    "&watermarkTxt="
-                )
-            logging.info(f"Downloading PDF for record {rec_id} from: {preview_url}")
-            pdf_bytes = download_pdf(preview_url)
-            # detect HTML vs PDF content
-            is_html = pdf_bytes.lstrip().startswith(b'<')
-            if is_html:
-                # HTML content
-                text = pdf_bytes.decode('utf-8', errors='ignore')
-            else:
-                # write temp pdf and convert to text
-                with open("temp.pdf", "wb") as f_pdf:
-                    f_pdf.write(pdf_bytes)
-                try:
-                    subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
-                    with open("temp.txt", "r", encoding="utf-8") as f_txt:
-                        text = f_txt.read()
-                except Exception as e:
-                    logging.error(f"Failed pdf->text for {preview_url}: {e}")
-                    continue
-            # search keywords and write docx
-            for kw in keywords:
+                    text = BeautifulSoup(html_text, "lxml").get_text("\n")
+                    url_used = detail_url
+                else:
+                    if 'onlinePreview' in raw_url:
+                        preview_url = raw_url
+                    else:
+                        b64 = base64.urlsafe_b64encode(raw_url.encode()).decode()
+                        preview_url = (
+                            f"https://file-view.comein.cn/onlinePreview?url={b64}"
+                            "&officePreviewSwitchDisabled=true"
+                            "&officePreviewType=pdf"
+                            "&watermarkTxt="
+                        )
+                    pdf_bytes = download_pdf(preview_url)
+                    is_html = pdf_bytes.lstrip().startswith(b'<')
+                    if is_html:
+                        text = pdf_bytes.decode('utf-8', errors='ignore')
+                    else:
+                        with open("temp.pdf", "wb") as f_pdf:
+                            f_pdf.write(pdf_bytes)
+                        try:
+                            subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
+                            with open("temp.txt", "r", encoding="utf-8") as f_txt:
+                                text = f_txt.read()
+                        except Exception:
+                            continue
+                    url_used = preview_url
                 paras = find_paragraphs_with_keyword(text, kw)
                 if not paras:
                     continue
                 title = rec.get("title", "")
-                logging.info(f"Found for title {title}")
-                # sanitize title for filename
-                safe_title = re.sub(r'\W+', '_', title).strip('_')
-                # prepare DOCX filename: code_title_keyword_publishdate
-                date = rec.get("publishDate", "").split()[0]
-                safe_kw = kw.replace(" ", "_")
-                out_file = f"{full_code}_{safe_title}_{safe_kw}_{date}.docx"
-                out_path = os.path.join(output_dir, out_file)
-                write_paragraphs_to_docx(paras, out_path, kw)
-                # save original file for keyword hit
-                orig_dir = "original files"
-                os.makedirs(orig_dir, exist_ok=True)
                 author = rec.get("author", "")
-                safe_author = re.sub(r'\W+', '_', author).strip('_')
-                ext = ".html" if is_html else ".pdf"
-                orig_fname = f"{full_code}_{safe_title}_{safe_author}{ext}"
-                orig_path = os.path.join(orig_dir, orig_fname)
-                with open(orig_path, "wb") as f:
-                    f.write(pdf_bytes)
-                logging.info(f"Saved original file {orig_fname}")
-        if len(records) < PAGE_SIZE:
-            break
-        page_index += 1
-
+                doc.add_heading(f"{pub_date}_{title}_{author}", level=1)
+                p = doc.add_paragraph()
+                add_hyperlink(p, url_used)
+                for idx, para in enumerate(paras, start=1):
+                    doc.add_heading(f"Location {idx}", level=2)
+                    p2 = doc.add_paragraph()
+                    pattern = re.compile(re.escape(kw), re.IGNORECASE)
+                    pos = 0
+                    for m in pattern.finditer(para):
+                        if m.start() > pos:
+                            p2.add_run(para[pos:m.start()])
+                        run_h = p2.add_run(para[m.start():m.end()])
+                        run_h.bold = True
+                        run_h.font.highlight_color = WD_COLOR_INDEX.RED
+                        pos = m.end()
+                    if pos < len(para):
+                        p2.add_run(para[pos:])
+                if break_page:
+                    break
+            if len(records) < PAGE_SIZE or break_page:
+                break
+            page_index += 1
+        safe_kw = kw.replace(" ", "_")
+        out_name = f"{full_code}_{safe_kw}_券商研报.docx"
+        doc.save(os.path.join(output_dir, out_name))
+        logging.info(f"Saved combined DOCX for keyword {kw}: {out_name}")
 
 def download_original_reports(full_code: str, start_date: str = '2025-01-01', output_dir: str = 'original files'):
     """Download all PDFs from reports published after start_date."""
@@ -268,7 +263,18 @@ def download_original_reports(full_code: str, start_date: str = '2025-01-01', ou
             break
         page_index += 1
 
-
 if __name__ == '__main__':
-    # Download original files from April 1, 2025
-    download_original_reports('sz002738')
+    code = input('Enter company code (e.g. sz002738): ').strip() or 'sz002738'
+    # input keywords interactively
+    keywords = []
+    while True:
+        kw = input('Enter next keyword (blank to finish): ').strip()
+        if not kw:
+            break
+        keywords.append(kw)
+    if not keywords:
+        print('No keywords provided. Exiting.')
+        sys.exit(0)
+    start_date = input('Enter earliest publish date (YYYY-MM-DD) or leave blank: ').strip() or None
+    end_date = input('Enter latest publish date (YYYY-MM-DD) or leave blank: ').strip() or None
+    crawl_company(code, keywords, start_date=start_date, end_date=end_date)
