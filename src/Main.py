@@ -9,11 +9,11 @@ import re
 import requests
 import urllib.parse
 import base64
-import subprocess
 import fitz  # PyMuPDF for text extraction
 import zipfile
 from lxml import etree
 from docx import Document
+import subprocess
 from bs4 import BeautifulSoup
 
 def download_pdf(url):
@@ -141,83 +141,75 @@ def write_paragraphs_to_docx(paragraphs, output_path, keyword):
         sys.exit(1)
 
 def main():
-    parser = argparse.ArgumentParser(description='Search keyword in a PDF and export matching paragraphs to a docx file.')
-    parser.add_argument('-u', '--url', help='URL of the PDF file')
-    parser.add_argument('--docx-file', help='Path to pre-converted DOCX file to parse instead of PDF')
-    parser.add_argument('-k', '--keyword', required=True, help='Keyword to search for')
-    parser.add_argument('-o', '--output', default='output.docx', help='Output DOCX file name')
-    args = parser.parse_args()
-    # Either PDF URL or DOCX file must be provided
-    if not args.url and not args.docx_file:
-        parser.error('Provide either --url or --docx-file')
-
-    keyword_lower = args.keyword.lower()
-    if args.docx_file:
-        print(f"Parsing DOCX file {args.docx_file} for '{args.keyword}'...")
-        paragraphs = find_paragraphs_in_docx_file(args.docx_file, args.keyword)
-    else:
-        print(f"Fetching URL {args.url}...")
-        try:
-            resp = requests.get(args.url)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"Error fetching URL: {e}")
-            sys.exit(1)
-        ctype = resp.headers.get("content-type", "").lower()
-        # HTML page detected (not a PDF preview)
-        qs = urllib.parse.parse_qs(urllib.parse.urlparse(args.url).query)
-        if "html" in ctype and "url" not in qs:
-            # Render page with Playwright to support JS
-            try:
-                from playwright.sync_api import sync_playwright
-            except ImportError:
-                print("Playwright not installed. Run 'pip install playwright' and 'playwright install'.")
-                sys.exit(1)
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                page.goto(args.url, timeout=60000)
-                page.wait_for_load_state("networkidle")
-                html_text = page.content()
-                browser.close()
-            # Extract text and search
-            text = BeautifulSoup(html_text, "lxml").get_text("\n")
-            if keyword_lower not in text.lower():
-                print(f"No paragraphs found containing '{args.keyword}'.")
-                sys.exit(0)
-            paragraphs = find_paragraphs_with_keyword(text, args.keyword)
-        else:
-            # Handle PDF (direct or preview)
-            if "html" in ctype and "url" in qs:
-                b64 = qs.get("url")[0]
-                real_url = base64.urlsafe_b64decode(b64).decode()
-                resp = requests.get(real_url)
-                resp.raise_for_status()
-            pdf_bytes = resp.content
-            # Pre-detect keyword in PDF
-            if keyword_lower not in extract_text_with_pymupdf(pdf_bytes).lower():
-                print(f"No paragraphs found containing '{args.keyword}'.")
-                sys.exit(0)
-            # Convert PDF to text via pdftext CLI
-            sample_pdf = "sample.pdf"
-            with open(sample_pdf, "wb") as f:
-                f.write(pdf_bytes)
-            print("Converting PDF to text via pdftext CLI...")
-            try:
-                subprocess.run(["pdftext", sample_pdf, "--out_path", "converted.txt"], check=True)
-            except Exception as e:
-                print(f"Error converting PDF to text: {e}")
-                sys.exit(1)
-            text = open("converted.txt", encoding="utf-8").read()
-            paragraphs = find_paragraphs_with_keyword(text, args.keyword)
-
-    if not paragraphs:
-        print(f"No paragraphs found containing '{args.keyword}'.")
+    # Interactive mode
+    url = input("Please enter the URL: ").strip()
+    if not url:
+        print("No URL entered. Exiting.")
         sys.exit(0)
-
-    print(f"Writing {len(paragraphs)} paragraphs to {args.output}...")
-    write_paragraphs_to_docx(paragraphs, args.output, args.keyword)
-    print("Done.")
+    # Fetch content once
+    print(f"Fetching URL {url}...")
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"Error fetching URL: {e}")
+        sys.exit(1)
+    ctype = resp.headers.get("content-type", "").lower()
+    qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    # Extract text
+    if "html" in ctype and "url" not in qs:
+        # Render JS pages
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            print("Playwright not installed. Run 'pip install playwright' and 'playwright install'.")
+            sys.exit(1)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, timeout=60000)
+            page.wait_for_load_state("networkidle")
+            html_text = page.content()
+            browser.close()
+        text = BeautifulSoup(html_text, "lxml").get_text("\n")
+    else:
+        # PDF handling
+        pdf_bytes = download_pdf(url)
+        sample_pdf = "sample.pdf"
+        with open(sample_pdf, "wb") as f:
+            f.write(pdf_bytes)
+        print("Converting PDF to text via pdftext CLI...")
+        try:
+            subprocess.run(["pdftext", sample_pdf, "--out_path", "converted.txt"], check=True)
+        except Exception as e:
+            print(f"Error converting PDF to text: {e}")
+            sys.exit(1)
+        with open("converted.txt", "r", encoding="utf-8") as f:
+            text = f.read()
+    # Collect multiple keywords
+    keywords = []
+    idx = 1
+    while True:
+        kw = input(f"Please enter keyword {idx}: ").strip()
+        if not kw:
+            break
+        keywords.append(kw)
+        idx += 1
+    if not keywords:
+        print("No keywords entered. Exiting.")
+        sys.exit(0)
+    # Process each keyword
+    for kw in keywords:
+        print(f"Searching for '{kw}'...")
+        paragraphs = find_paragraphs_with_keyword(text, kw)
+        if not paragraphs:
+            print(f"No paragraphs found for '{kw}'.")
+            continue
+        safe_kw = kw.replace(" ", "_")
+        output_file = f"result_{safe_kw}.docx"
+        print(f"Writing {len(paragraphs)} paragraphs to {output_file}...")
+        write_paragraphs_to_docx(paragraphs, output_file, kw)
+        print(f"Done for '{kw}'.")
 
 if __name__ == '__main__':
     main()
