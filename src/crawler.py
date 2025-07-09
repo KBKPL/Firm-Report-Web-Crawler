@@ -106,14 +106,13 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
             rec_id = rec.get('id')
             raw_url = rec.get('url')
             logging.info(raw_url)
-            if not raw_url:
-                report_id = rec.get('reportId') or rec_id
-                detail_url = f"{DETAIL_BASE_URL}?id={report_id}&type={rec.get('type')}&storeId={STORE_ID}"
+            if not raw_url or '/report/detail' in raw_url:
+                detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec.get('reportId') or rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
                 logging.info(f"Rendering HTML for record {rec_id} from: {detail_url}")
                 html_text = fetch_rendered_html(detail_url)
                 if not html_text:
                     continue
-                # save webpage as PDF
+                # save webpage as PDF snapshot
                 safe_title = re.sub(r'\W+', '_', rec.get('title','')).strip('_')
                 safe_author = re.sub(r'\W+', '_', rec.get('author','')).strip('_')
                 pdf_dir = 'original files'
@@ -122,33 +121,14 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
                 pdf_path = os.path.join(pdf_dir, pdf_name)
                 save_page_as_pdf(detail_url, pdf_path)
                 logging.info(f"Saved PDF {pdf_name}")
-                # search in HTML
-                page_text = BeautifulSoup(html_text, "lxml").get_text("\n")
-                for kw in keywords:
-                    paras = find_paragraphs_with_keyword(page_text, kw)
-                    if not paras:
-                        continue
-                    safe_title = re.sub(r'\W+', '_', rec.get('title', '')).strip('_')
-                    date = rec.get('publishDate', '').split()[0]
-                    safe_kw = kw.replace(' ', '_')
-                    out_file = f"{full_code}_{safe_title}_{safe_kw}_{date}.docx"
-                    out_path = os.path.join(output_dir, out_file)
-                    write_paragraphs_to_docx(paras, out_path, kw)
-                continue
-            # HTML detail page handling
-            if '/report/detail' in raw_url:
-                logging.info(f"Rendering HTML for record {rec_id} from: {raw_url}")
-                html_text = fetch_rendered_html(raw_url)
-                if not html_text:
-                    continue
                 # extract full text and search paragraphs
                 page_text = BeautifulSoup(html_text, "lxml").get_text("\n")
                 for kw in keywords:
                     paras = find_paragraphs_with_keyword(page_text, kw)
                     if not paras:
                         continue
-                    safe_title = re.sub(r'\W+', '_', rec.get('title', '')).strip('_')
-                    date = rec.get('publishDate', '').split()[0]
+                    safe_title = re.sub(r'\W+', '_', rec.get('title','')).strip('_')
+                    date = rec.get('publishDate','').split()[0]
                     safe_kw = kw.replace(' ', '_')
                     out_file = f"{full_code}_{safe_title}_{safe_kw}_{date}.docx"
                     out_path = os.path.join(output_dir, out_file)
