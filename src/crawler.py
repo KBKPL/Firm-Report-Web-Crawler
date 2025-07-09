@@ -108,59 +108,62 @@ def add_hyperlink(paragraph, url):
 
 def crawl_company(full_code: str, keywords: list[str], output_dir: str = "results", start_date: str = None, end_date: str = None):
     os.makedirs(output_dir, exist_ok=True)
-    for kw in keywords:
-        doc = Document()
-        page_index = 0
-        while True:
-            logging.info(f"Fetching page: {page_index}")
-            records = fetch_report_page(full_code, page_index, PAGE_SIZE)
-            if not records:
+    # perform a single crawl and accumulate docs per keyword
+    docs = {kw: Document() for kw in keywords}
+    page_index = 0
+    while True:
+        logging.info(f"Fetching page: {page_index}")
+        records = fetch_report_page(full_code, page_index, PAGE_SIZE)
+        if not records:
+            break
+        break_page = False
+        for rec in records:
+            pub_date = rec.get("publishDate", "").split()[0]
+            if end_date and pub_date > end_date:
+                continue
+            if start_date and pub_date and pub_date < start_date:
+                break_page = True
                 break
-            break_page = False
-            for rec in records:
-                pub_date = rec.get("publishDate", "").split()[0]
-                if end_date and pub_date > end_date:
+            rec_id = rec.get('id')
+            raw_url = rec.get('url')
+            if not raw_url or '/report/detail' in raw_url:
+                detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec.get('reportId') or rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
+                html_text = fetch_rendered_html(detail_url)
+                if not html_text:
                     continue
-                if start_date and pub_date and pub_date < start_date:
-                    break_page = True
-                    break
-                rec_id = rec.get('id')
-                raw_url = rec.get('url')
-                if not raw_url or '/report/detail' in raw_url:
-                    detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec.get('reportId') or rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
-                    html_text = fetch_rendered_html(detail_url)
-                    if not html_text:
-                        continue
-                    text = BeautifulSoup(html_text, "lxml").get_text("\n")
-                    url_used = detail_url
+                text = BeautifulSoup(html_text, "lxml").get_text("\n")
+                url_used = detail_url
+            else:
+                if 'onlinePreview' in raw_url:
+                    preview_url = raw_url
                 else:
-                    if 'onlinePreview' in raw_url:
-                        preview_url = raw_url
-                    else:
-                        b64 = base64.urlsafe_b64encode(raw_url.encode()).decode()
-                        preview_url = (
-                            f"https://file-view.comein.cn/onlinePreview?url={b64}"
-                            "&officePreviewSwitchDisabled=true"
-                            "&officePreviewType=pdf"
-                            "&watermarkTxt="
-                        )
-                    pdf_bytes = download_pdf(preview_url)
-                    is_html = pdf_bytes.lstrip().startswith(b'<')
-                    if is_html:
-                        text = pdf_bytes.decode('utf-8', errors='ignore')
-                    else:
-                        with open("temp.pdf", "wb") as f_pdf:
-                            f_pdf.write(pdf_bytes)
-                        try:
-                            subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
-                            with open("temp.txt", "r", encoding="utf-8") as f_txt:
-                                text = f_txt.read()
-                        except Exception:
-                            continue
-                    url_used = preview_url
+                    b64 = base64.urlsafe_b64encode(raw_url.encode()).decode()
+                    preview_url = (
+                        f"https://file-view.comein.cn/onlinePreview?url={b64}"
+                        "&officePreviewSwitchDisabled=true"
+                        "&officePreviewType=pdf"
+                        "&watermarkTxt="
+                    )
+                pdf_bytes = download_pdf(preview_url)
+                is_html = pdf_bytes.lstrip().startswith(b'<')
+                if is_html:
+                    text = pdf_bytes.decode('utf-8', errors='ignore')
+                else:
+                    with open("temp.pdf", "wb") as f_pdf:
+                        f_pdf.write(pdf_bytes)
+                    try:
+                        subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
+                        with open("temp.txt", "r", encoding="utf-8") as f_txt:
+                            text = f_txt.read()
+                    except Exception:
+                        continue
+                url_used = preview_url
+            # scan for each keyword
+            for kw in keywords:
                 paras = find_paragraphs_with_keyword(text, kw)
                 if not paras:
                     continue
+                doc = docs[kw]
                 title = rec.get("title", "")
                 author = rec.get("author", "")
                 doc.add_heading(f"{pub_date}_{title}_{author}", level=1)
@@ -180,11 +183,11 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
                         pos = m.end()
                     if pos < len(para):
                         p2.add_run(para[pos:])
-                if break_page:
-                    break
-            if len(records) < PAGE_SIZE or break_page:
-                break
-            page_index += 1
+        if len(records) < PAGE_SIZE or break_page:
+            break
+        page_index += 1
+    # save all combined docs
+    for kw, doc in docs.items():
         safe_kw = kw.replace(" ", "_")
         out_name = f"{full_code}_{safe_kw}_券商研报.docx"
         doc.save(os.path.join(output_dir, out_name))
