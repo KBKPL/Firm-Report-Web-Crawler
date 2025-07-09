@@ -128,11 +128,15 @@ def find_paragraphs_from_html(html_text, keyword):
 
 def write_paragraphs_to_docx(paragraphs, output_path, keyword):
     doc = Document()
-    doc.add_heading(f'Paragraphs containing keyword: "{keyword}"', level=1)
-    for p in paragraphs:
+    # Overview heading
+    count = len(paragraphs)
+    doc.add_heading(f'Approximately {count} paragraph(s) including keyword: "{keyword}"', level=1)
+    # Add each paragraph with an indexed subheading
+    for idx, p in enumerate(paragraphs, start=1):
+        doc.add_heading(f'Location {idx}', level=2)
         clean_p = sanitize_text(p)
         if not clean_p.strip():
-            continue  # skip empty after sanitization
+            continue
         doc.add_paragraph(clean_p)
     try:
         doc.save(output_path)
@@ -187,6 +191,7 @@ def main():
         with open("converted.txt", "r", encoding="utf-8") as f:
             text = f.read()
     # Collect multiple keywords
+    print("Enter keywords one by one. Press Enter on an empty prompt to finish.")
     keywords = []
     idx = 1
     while True:
