@@ -134,14 +134,6 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
                     out_file = f"{full_code}_{safe_title}_{safe_kw}_{date}.docx"
                     out_path = os.path.join(output_dir, out_file)
                     write_paragraphs_to_docx(paras, out_path, kw)
-                    # save original HTML
-                    orig_dir = 'original files'
-                    os.makedirs(orig_dir, exist_ok=True)
-                    safe_author = re.sub(r'\W+', '_', rec.get('author', '')).strip('_')
-                    orig_name = f"{full_code}_{safe_title}_{safe_author}.html"
-                    with open(os.path.join(orig_dir, orig_name), 'w', encoding='utf-8') as f:
-                        f.write(html_text)
-                    logging.info(f"Saved original HTML {orig_name}")
                 continue
             # HTML detail page handling
             if '/report/detail' in raw_url:
@@ -161,14 +153,6 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
                     out_file = f"{full_code}_{safe_title}_{safe_kw}_{date}.docx"
                     out_path = os.path.join(output_dir, out_file)
                     write_paragraphs_to_docx(paras, out_path, kw)
-                    # save original HTML
-                    orig_dir = 'original files'
-                    os.makedirs(orig_dir, exist_ok=True)
-                    safe_author = re.sub(r'\W+', '_', rec.get('author', '')).strip('_')
-                    orig_name = f"{full_code}_{safe_title}_{safe_author}.html"
-                    with open(os.path.join(orig_dir, orig_name), 'w', encoding='utf-8') as f:
-                        f.write(html_text)
-                    logging.info(f"Saved original HTML {orig_name}")
                 continue
             # PDF handling
             # always use file-view preview to fetch PDF bytes
