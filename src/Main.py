@@ -7,13 +7,11 @@ import sys
 import subprocess
 from bs4 import BeautifulSoup
 import urllib.parse
-import base64
 
 from http_utils import session
 from pdf_utils import download_pdf
-from text_utils import split_chinese_sentences, find_paragraphs_with_keyword, sanitize_text
-from html_utils import find_paragraphs_from_html
-from docx_utils import find_paragraphs_in_docx_file, write_paragraphs_to_docx
+from text_utils import find_paragraphs_with_keyword
+from docx_utils import write_paragraphs_to_docx
 
 def main():
     # Interactive mode
