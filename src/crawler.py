@@ -30,6 +30,9 @@ PAGE_SIZE = 10
 DETAIL_BASE_URL = "https://irm-enterprise-pc.comein.cn/investors/flow/report/detail"
 STORE_ID = "21113"
 
+# Endpoint for 公司报告
+ANNOUNCE_URL = "https://server.comein.cn/comein/irmcenter/v3/anonymous/irstore/{full_code}/announcements"
+
 def fetch_rendered_html(url: str) -> str:
     """Use Playwright to render JS-driven pages and return full HTML."""
     try:
@@ -88,6 +91,29 @@ def fetch_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_
         return data.get("rows", [])
     except Exception as e:
         logging.error(f"Error fetching report list: {e}")
+        return []
+
+def fetch_company_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_SIZE) -> list[dict]:
+    """Fetch one page of 公司报告 metadata via GET."""
+    url = ANNOUNCE_URL.format(full_code=full_code)
+    params = {
+        "classificationIds": "",
+        "pageStart": page_index,
+        "pageNum": page_num,
+        "order": "desc",
+        "title": "",
+        "languageType": 0
+    }
+    try:
+        resp = session.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != "0":
+            logging.error(f"Company report list API error: {data}")
+            return []
+        return data.get("rows", [])
+    except Exception as e:
+        logging.error(f"Error fetching company report page: {e}")
         return []
 
 def add_hyperlink(paragraph, url):
@@ -192,6 +218,92 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
         out_name = f"{full_code}_{safe_kw}_券商研报.docx"
         doc.save(os.path.join(output_dir, out_name))
         logging.info(f"Saved combined DOCX for keyword {kw}: {out_name}")
+
+def crawl_company_reports(full_code: str, keywords: list[str], output_dir: str = "results/company_reports", start_date: str = None, end_date: str = None):
+    """Crawl 公司公告 section and extract keyword-containing paragraphs."""
+    os.makedirs(output_dir, exist_ok=True)
+    docs = {kw: Document() for kw in keywords}
+    page_index = 0
+    while True:
+        logging.info(f"Fetching company report page: {page_index}")
+        records = fetch_company_report_page(full_code, page_index, PAGE_SIZE)
+        if not records:
+            break
+        break_page = False
+        for rec in records:
+            pub_date = rec.get("publishDate", "").split()[0]
+            if end_date and pub_date > end_date:
+                continue
+            if start_date and pub_date and pub_date < start_date:
+                break_page = True
+                break
+            rec_id = rec.get('reportId') or rec.get('id')
+            # use comeinLink for announcements
+            raw_url = rec.get('comeinLink') or rec.get('url')
+            # HTML detail page when no preview blob
+            if not raw_url or '/report/detail' in raw_url:
+                detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
+                html_text = fetch_rendered_html(detail_url)
+                if not html_text:
+                    continue
+                text = BeautifulSoup(html_text, "lxml").get_text("\n")
+                url_used = detail_url
+            # otherwise direct PDF preview
+            else:
+                if 'onlinePreview' in raw_url:
+                    preview_url = raw_url
+                else:
+                    b64 = base64.urlsafe_b64encode(raw_url.encode()).decode()
+                    preview_url = (
+                        f"https://file-view.comein.cn/onlinePreview?url={b64}"
+                        "&officePreviewSwitchDisabled=true"
+                        "&officePreviewType=pdf"
+                        "&watermarkTxt="
+                    )
+                # download and extract text from PDF
+                pdf_bytes = download_pdf(preview_url)
+                with open("temp.pdf", "wb") as f_pdf:
+                    f_pdf.write(pdf_bytes)
+                try:
+                    subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
+                    with open("temp.txt", "r", encoding="utf-8") as f_txt:
+                        text = f_txt.read()
+                except Exception:
+                    continue
+                url_used = preview_url
+            for kw in keywords:
+                paras = find_paragraphs_with_keyword(text, kw)
+                if not paras:
+                    continue
+                doc = docs[kw]
+                title = rec.get("title", "")
+                author = rec.get("author", "")
+                doc.add_heading(f"{pub_date}_{title}_{author}", level=1)
+                p = doc.add_paragraph()
+                add_hyperlink(p, url_used)
+                for idx, para in enumerate(paras, start=1):
+                    doc.add_heading(f"Location {idx}", level=2)
+                    p2 = doc.add_paragraph()
+                    pattern = re.compile(re.escape(kw), re.IGNORECASE)
+                    pos = 0
+                    for m in pattern.finditer(para):
+                        if m.start() > pos:
+                            p2.add_run(para[pos:m.start()])
+                        run_h = p2.add_run(para[m.start():m.end()])
+                        run_h.bold = True
+                        run_h.font.highlight_color = WD_COLOR_INDEX.RED
+                        pos = m.end()
+                    if pos < len(para):
+                        p2.add_run(para[pos:])
+        if len(records) < PAGE_SIZE or break_page:
+            break
+        page_index += 1
+    # save all combined docs
+    for kw, doc in docs.items():
+        safe_kw = kw.replace(" ", "_")
+        out_name = f"{full_code}_{safe_kw}_公司公告.docx"
+        doc.save(os.path.join(output_dir, out_name))
+        logging.info(f"Saved combined DOCX for keyword {kw} [公司公告]: {out_name}")
 
 def download_original_reports(full_code: str, start_date: str = '2025-01-01', output_dir: str = 'original files'):
     """Download all PDFs from reports published after start_date."""
