@@ -7,16 +7,13 @@ import logging
 import subprocess
 import base64
 import re
-import sys
 import tempfile
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
-from http_utils import session
-from pdf_utils import download_pdf
-from text_utils import find_paragraphs_with_keyword
-from html_utils import find_paragraphs_from_html
-from docx_utils import write_paragraphs_to_docx
+from src.utils.http_utils import session
+from src.utils.pdf_utils import download_pdf
+from src.utils.text_utils import find_paragraphs_with_keyword
 from bs4 import BeautifulSoup  # for extracting full page text
 from docx import Document
 from docx.enum.text import WD_COLOR_INDEX

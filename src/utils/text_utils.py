@@ -3,22 +3,6 @@ Text utilities: splitting Chinese sentences, paragraph extraction, sanitization.
 """
 import re
 
-def split_chinese_sentences(text: str) -> list[str]:
-    """Split Chinese text into sentences based on Chinese punctuation."""
-    lines = text.split('\n')
-    sentences = []
-    buffer = ''
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        buffer += line
-        if re.search(r'[。！？]$', buffer):
-            sentences.append(buffer)
-            buffer = ''
-    if buffer:
-        sentences.append(buffer)
-    return sentences
 
 def find_paragraphs_with_keyword(text: str, keyword: str) -> list[str]:
     """Extract paragraphs containing keyword by splitting on blank lines."""
