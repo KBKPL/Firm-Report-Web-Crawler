@@ -8,6 +8,7 @@ import subprocess
 import base64
 import re
 import sys
+import tempfile
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
@@ -158,6 +159,7 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
     os.makedirs(output_dir, exist_ok=True)
     # perform a single crawl and accumulate docs per keyword
     docs = {kw: Document() for kw in keywords}
+    generated = {}
     page_index = 0
     while True:
         logging.info(f"Fetching page: {page_index}")
@@ -197,14 +199,22 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
                 if is_html:
                     text = pdf_bytes.decode('utf-8', errors='ignore')
                 else:
-                    with open("temp.pdf", "wb") as f_pdf:
-                        f_pdf.write(pdf_bytes)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                        tmp_pdf.write(pdf_bytes)
+                        tmp_pdf_path = tmp_pdf.name
+                    tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+                    tmp_txt.close()
                     try:
-                        subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
-                        with open("temp.txt", "r", encoding="utf-8") as f_txt:
+                        subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
+                        with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
                             text = f_txt.read()
                     except Exception:
+                        os.remove(tmp_pdf_path)
+                        os.remove(tmp_txt.name)
                         continue
+                    finally:
+                        os.remove(tmp_pdf_path)
+                        os.remove(tmp_txt.name)
                 url_used = preview_url
             # scan for each keyword
             for kw in keywords:
@@ -240,11 +250,14 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
         out_name = f"{full_code}_{safe_kw}_券商研报.docx"
         doc.save(os.path.join(output_dir, out_name))
         logging.info(f"Saved combined DOCX for keyword {kw}: {out_name}")
+        generated[kw] = os.path.join(output_dir, out_name)
+    return generated
 
 def crawl_company_reports(full_code: str, keywords: list[str], output_dir: str = "results/company_reports", start_date: str = None, end_date: str = None):
     """Crawl 公司公告 section and extract keyword-containing paragraphs."""
     os.makedirs(output_dir, exist_ok=True)
     docs = {kw: Document() for kw in keywords}
+    generated = {}
     page_index = 0
     while True:
         logging.info(f"Fetching company report page: {page_index}")
@@ -284,14 +297,22 @@ def crawl_company_reports(full_code: str, keywords: list[str], output_dir: str =
                     )
                 # download and extract text from PDF
                 pdf_bytes = download_pdf(preview_url)
-                with open("temp.pdf", "wb") as f_pdf:
-                    f_pdf.write(pdf_bytes)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                    tmp_pdf.write(pdf_bytes)
+                    tmp_pdf_path = tmp_pdf.name
+                tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+                tmp_txt.close()
                 try:
-                    subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
-                    with open("temp.txt", "r", encoding="utf-8") as f_txt:
+                    subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
+                    with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
                         text = f_txt.read()
                 except Exception:
+                    os.remove(tmp_pdf_path)
+                    os.remove(tmp_txt.name)
                     continue
+                finally:
+                    os.remove(tmp_pdf_path)
+                    os.remove(tmp_txt.name)
                 url_used = preview_url
             for kw in keywords:
                 paras = find_paragraphs_with_keyword(text, kw)
@@ -320,17 +341,20 @@ def crawl_company_reports(full_code: str, keywords: list[str], output_dir: str =
         if len(records) < PAGE_SIZE or break_page:
             break
         page_index += 1
-    # save all combined docs
+    # save docs
     for kw, doc in docs.items():
         safe_kw = kw.replace(' ', '_')
         out_name = f"{full_code}_{safe_kw}_公司公告.docx"
         doc.save(os.path.join(output_dir, out_name))
         logging.info(f"Saved combined DOCX for keyword {kw} [公司公告]: {out_name}")
+        generated[kw] = os.path.join(output_dir, out_name)
+    return generated
 
 def crawl_quarterly_reports(full_code: str, keywords: list[str], output_dir: str = "results/quarterly", start_date: str = None, end_date: str = None):
     """Crawl 季度业绩 using Playwright UI, extract keyword paragraphs."""
     os.makedirs(output_dir, exist_ok=True)
     docs = {kw: Document() for kw in keywords}
+    generated = {}
     # fetch JSON to build (year, quarter) selections
     records = fetch_financial_statement_page(full_code, "", "")
     selections: list[tuple[str, str]] = []
@@ -389,14 +413,24 @@ def crawl_quarterly_reports(full_code: str, keywords: list[str], output_dir: str
             pdf_url = pdf_page.url
             pdf_page.close()
             # download & extract
+            pdf_bytes = download_pdf(pdf_url)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                tmp_pdf.write(pdf_bytes)
+                tmp_pdf_path = tmp_pdf.name
+            tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+            tmp_txt.close()
             try:
-                pdf_bytes = download_pdf(pdf_url)
-                with open("temp.pdf", "wb") as f: f.write(pdf_bytes)
-                subprocess.run(["pdftext", "temp.pdf", "--out_path", "temp.txt"], check=True)
-                with open("temp.txt", "r", encoding="utf-8") as f: text = f.read()
+                subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
+                with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
+                    text = f_txt.read()
             except Exception as e:
-                logging.error(f"Failed PDF fetch/parse for {year} {rpt_cn}: {e}")
+                os.remove(tmp_pdf_path)
+                os.remove(tmp_txt.name)
+                logging.error(f"Failed extract text from PDF: {e}")
                 continue
+            finally:
+                os.remove(tmp_pdf_path)
+                os.remove(tmp_txt.name)
             # scan keywords
             for kw in keywords:
                 paras = find_paragraphs_with_keyword(text, kw)
@@ -421,92 +455,5 @@ def crawl_quarterly_reports(full_code: str, keywords: list[str], output_dir: str
         out = f"{full_code}_{safe}_季度业绩.docx"
         doc.save(os.path.join(output_dir, out))
         logging.info(f"Saved combined DOCX for keyword {kw} [季度业绩]: {out}")
-
-def download_original_reports(full_code: str, start_date: str = '2025-01-01', output_dir: str = 'original files'):
-    """Download all PDFs from reports published after start_date."""
-    os.makedirs(output_dir, exist_ok=True)
-    page_index = 0  # 0-based page number for pagination
-    while True:
-        logging.info(f"Fetching page (original files): {page_index}")
-        records = fetch_report_page(full_code, page_index, PAGE_SIZE)
-        if not records:
-            break
-        for rec in records:
-            pub_date = rec.get('publishDate', '').split()[0]
-            logging.info(pub_date)
-            if not pub_date or pub_date < start_date:
-                continue
-            raw_url = rec.get('url')
-            logging.info(raw_url)
-            if not raw_url:
-                report_id = rec.get('reportId') or rec.get('id')
-                detail_url = f"{DETAIL_BASE_URL}?id={report_id}&type={rec.get('type')}&storeId={STORE_ID}"
-                logging.info(f"Downloading original HTML for record {rec.get('id')} from: {detail_url}")
-                try:
-                    resp = session.get(detail_url, timeout=10)
-                    resp.raise_for_status()
-                    content = resp.content
-                except Exception as e:
-                    logging.error(f"Error downloading HTML: {e}")
-                    continue
-                ext = '.html'
-            else:
-                # Detect HTML detail pages
-                if '/report/detail' in raw_url:
-                    html_url = raw_url
-                    logging.info(f"Downloading original HTML for record {rec.get('id')} from: {html_url}")
-                    try:
-                        resp = session.get(html_url, timeout=10)
-                        resp.raise_for_status()
-                        content = resp.content
-                    except Exception as e:
-                        logging.error(f"Error downloading HTML: {e}")
-                        continue
-                    ext = '.html'
-                else:
-                    # PDF via preview wrapper
-                    if "onlinePreview" in raw_url:
-                        preview_url = raw_url
-                    else:
-                        b64 = base64.urlsafe_b64encode(raw_url.encode()).decode()
-                        preview_url = (
-                            f"https://file-view.comein.cn/onlinePreview?url={b64}"
-                            "&officePreviewSwitchDisabled=true"
-                            "&officePreviewType=pdf"
-                            "&watermarkTxt="
-                        )
-                    logging.info(f"Downloading original PDF for record {rec.get('id')} from: {preview_url}")
-                    content = download_pdf(preview_url)
-                    ext = '.pdf'
-            # save original file with code_title_author
-            title = rec.get('title', '')
-            safe_title = re.sub(r'\W+', '_', title).strip('_')
-            author = rec.get('author', '')
-            safe_author = re.sub(r'\W+', '_', author).strip('_')
-            orig_fname = f"{full_code}_{safe_title}_{safe_author}{ext}"
-            orig_path = os.path.join(output_dir, orig_fname)
-            try:
-                with open(orig_path, 'wb') as f:
-                    f.write(content)
-                logging.info(f"Saved original file {orig_fname}")
-            except Exception as e:
-                logging.error(f"Failed to save original file: {e}")
-        if len(records) < PAGE_SIZE:
-            break
-        page_index += 1
-
-if __name__ == '__main__':
-    code = input('Enter company code (e.g. sz002738): ').strip() or 'sz002738'
-    # input keywords interactively
-    keywords = []
-    while True:
-        kw = input('Enter next keyword (blank to finish): ').strip()
-        if not kw:
-            break
-        keywords.append(kw)
-    if not keywords:
-        print('No keywords provided. Exiting.')
-        sys.exit(0)
-    start_date = input('Enter earliest publish date (YYYY-MM-DD) or leave blank: ').strip() or None
-    end_date = input('Enter latest publish date (YYYY-MM-DD) or leave blank: ').strip() or None
-    crawl_company(code, keywords, start_date=start_date, end_date=end_date)
+        generated[kw] = os.path.join(output_dir, out)
+    return generated

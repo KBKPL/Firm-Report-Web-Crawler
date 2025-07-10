@@ -39,13 +39,40 @@ def main():
     for rt in report_types:
         if rt == '1':  # quarterly performance
             output_dir = str(BASE_DIR / 'quarterly performance')
-            crawl_quarterly_reports(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+            try:
+                generated = crawl_quarterly_reports(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+                if generated:
+                    print("Generated quarterly performance docs:")
+                    for kw, path in generated.items():
+                        print(f"  {kw}: {path}")
+                else:
+                    print("No quarterly performance docs generated.")
+            except Exception as e:
+                print(f"Error during quarterly performance crawl: {e}")
         elif rt == '2':  # company announcements
             output_dir = str(BASE_DIR / 'company announcements')
-            crawl_company_reports(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+            try:
+                generated = crawl_company_reports(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+                if generated:
+                    print("Generated company announcements docs:")
+                    for kw, path in generated.items():
+                        print(f"  {kw}: {path}")
+                else:
+                    print("No company announcements docs generated.")
+            except Exception as e:
+                print(f"Error during company announcements crawl: {e}")
         elif rt == '3':  # broker reports
             output_dir = str(BASE_DIR / 'broker reports')
-            crawl_company(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+            try:
+                generated = crawl_company(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+                if generated:
+                    print("Generated broker reports docs:")
+                    for kw, path in generated.items():
+                        print(f"  {kw}: {path}")
+                else:
+                    print("No broker reports docs generated.")
+            except Exception as e:
+                print(f"Error during broker reports crawl: {e}")
         else:
             print(f"Unknown section '{rt}', skipping.")
 
