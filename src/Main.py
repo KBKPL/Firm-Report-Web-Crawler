@@ -6,8 +6,8 @@ import logging
 import sys
 import os
 from pathlib import Path
-from crawler import crawl_company
-from crawler import crawl_company_reports, crawl_quarterly_reports
+from crawler import crawl_broker_reports
+from crawler import crawl_company_announcements, crawl_quarterly_performance
 
 # Project root one level above src
 BASE_DIR = Path(__file__).parent.parent
@@ -40,7 +40,7 @@ def main():
         if rt == '1':  # quarterly performance
             output_dir = str(BASE_DIR / 'quarterly performance')
             try:
-                generated = crawl_quarterly_reports(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+                generated = crawl_quarterly_performance(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
                 if generated:
                     print("Generated quarterly performance docs:")
                     for kw, path in generated.items():
@@ -52,7 +52,7 @@ def main():
         elif rt == '2':  # company announcements
             output_dir = str(BASE_DIR / 'company announcements')
             try:
-                generated = crawl_company_reports(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+                generated = crawl_company_announcements(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
                 if generated:
                     print("Generated company announcements docs:")
                     for kw, path in generated.items():
@@ -64,7 +64,7 @@ def main():
         elif rt == '3':  # broker reports
             output_dir = str(BASE_DIR / 'broker reports')
             try:
-                generated = crawl_company(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
+                generated = crawl_broker_reports(code, keywords, output_dir=output_dir, start_date=start_date, end_date=end_date)
                 if generated:
                     print("Generated broker reports docs:")
                     for kw, path in generated.items():

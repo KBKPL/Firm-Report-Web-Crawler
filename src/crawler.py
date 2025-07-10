@@ -155,7 +155,7 @@ def add_hyperlink(paragraph, url):
     hyperlink.append(new_run)
     paragraph._p.append(hyperlink)
 
-def crawl_company(full_code: str, keywords: list[str], output_dir: str = "results", start_date: str = None, end_date: str = None):
+def crawl_broker_reports(full_code: str, keywords: list[str], output_dir: str = "results", start_date: str = None, end_date: str = None):
     os.makedirs(output_dir, exist_ok=True)
     # perform a single crawl and accumulate docs per keyword
     docs = {kw: Document() for kw in keywords}
@@ -253,7 +253,7 @@ def crawl_company(full_code: str, keywords: list[str], output_dir: str = "result
         generated[kw] = os.path.join(output_dir, out_name)
     return generated
 
-def crawl_company_reports(full_code: str, keywords: list[str], output_dir: str = "results/company_reports", start_date: str = None, end_date: str = None):
+def crawl_company_announcements(full_code: str, keywords: list[str], output_dir: str = "results/company_reports", start_date: str = None, end_date: str = None):
     """Crawl 公司公告 section and extract keyword-containing paragraphs."""
     os.makedirs(output_dir, exist_ok=True)
     docs = {kw: Document() for kw in keywords}
@@ -350,7 +350,7 @@ def crawl_company_reports(full_code: str, keywords: list[str], output_dir: str =
         generated[kw] = os.path.join(output_dir, out_name)
     return generated
 
-def crawl_quarterly_reports(full_code: str, keywords: list[str], output_dir: str = "results/quarterly", start_date: str = None, end_date: str = None):
+def crawl_quarterly_performance(full_code: str, keywords: list[str], output_dir: str = "results/quarterly", start_date: str = None, end_date: str = None):
     """Crawl 季度业绩 using Playwright UI, extract keyword paragraphs."""
     os.makedirs(output_dir, exist_ok=True)
     docs = {kw: Document() for kw in keywords}
