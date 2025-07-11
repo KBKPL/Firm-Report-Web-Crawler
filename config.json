@@ -1,0 +1,17 @@
+{
+  "sinomine": {
+    "full_code": "sz002738",
+    "store_id": "21113",
+    "broker_report_url": "https://server.comein.cn/comein/irmcenter/anonymous/irstore/report/list",
+    "broker_report_nonpdf_base_url": "https://irm-enterprise-pc.comein.cn/investors/flow/report/detail",
+    "company_announcement_url": "https://server.comein.cn/comein/irmcenter/v3/anonymous/irstore/{full_code}/announcements",
+    "financial_base_url": "https://server.comein.cn/comein/irmcenter/anonymous/irstore/{full_code}/stock/financial-statement",
+    "page_size": 10
+  },
+  "ganfeng": {
+    "full_code": "ganfeng",
+    "base_url": "https://www.ganfenglithium.com",
+    "financial_base_url": "https://www.ganfenglithium.com/index.php/Home/Index/ir1/p/{page}.html",
+    "company_announcement_url": "https://www.ganfenglithium.com/index.php/Home/Index/ir4/p/{page}.html"
+  }
+}
