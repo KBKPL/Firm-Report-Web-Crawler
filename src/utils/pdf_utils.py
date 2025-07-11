@@ -5,7 +5,7 @@ import sys
 import logging
 import urllib.parse
 import base64
-from http_utils import session
+from src.utils.http_utils import session
 
 logger = logging.getLogger(__name__)
 

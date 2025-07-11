@@ -4,7 +4,6 @@ DOCX utilities: read/write paragraphs to/from DOCX.
 import sys
 import logging
 from docx import Document
-from text_utils import sanitize_text
 import re
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn

@@ -21,15 +21,15 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.opc.constants import RELATIONSHIP_TYPE
 
-API_LIST_URL = "https://server.comein.cn/comein/irmcenter/anonymous/irstore/report/list"
+BROKER_REPORT_URL = "https://server.comein.cn/comein/irmcenter/anonymous/irstore/report/list"
 PAGE_SIZE = 10
 
 # Base URL for HTML detail pages and default store ID for Sinomine
-DETAIL_BASE_URL = "https://irm-enterprise-pc.comein.cn/investors/flow/report/detail"
+BROKER_REPORT_NONPDF_BASE_URL = "https://irm-enterprise-pc.comein.cn/investors/flow/report/detail"
 STORE_ID = "21113"
 
 # Endpoint for 公司报告
-ANNOUNCE_URL = "https://server.comein.cn/comein/irmcenter/v3/anonymous/irstore/{full_code}/announcements"
+COMPANY_ANNOUNCEMENET_URL = "https://server.comein.cn/comein/irmcenter/v3/anonymous/irstore/{full_code}/announcements"
 
 # Base URL for 季度业绩 (quarter performance)
 FINANCIAL_BASE_URL = "https://server.comein.cn/comein/irmcenter/anonymous/irstore/{full_code}/stock/financial-statement"
@@ -73,7 +73,7 @@ def save_page_as_pdf(url: str, output_path: str) -> bool:
         logging.error(f"Error saving PDF via Playwright: {e}")
         return False
 
-def fetch_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_SIZE) -> list[dict]:
+def fetch_broker_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_SIZE) -> list[dict]:
     """Fetch one page of report metadata using 0-based page index (pagestart)."""
     payload = {
         "pagestart": page_index,  # page number (0-based)
@@ -83,7 +83,7 @@ def fetch_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_
         "languageType": 0
     }
     try:
-        resp = session.post(API_LIST_URL, json=payload, timeout=10)
+        resp = session.post(BROKER_REPORT_URL, json=payload, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         if data.get("code") != "0":
@@ -94,9 +94,9 @@ def fetch_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_
         logging.error(f"Error fetching report list: {e}")
         return []
 
-def fetch_company_report_page(full_code: str, page_index: int = 0, page_num: int = PAGE_SIZE) -> list[dict]:
+def fetch_company_announcement_page(full_code: str, page_index: int = 0, page_num: int = PAGE_SIZE) -> list[dict]:
     """Fetch one page of 公司报告 metadata via GET."""
-    url = ANNOUNCE_URL.format(full_code=full_code)
+    url = COMPANY_ANNOUNCEMENET_URL.format(full_code=full_code)
     params = {
         "classificationIds": "",
         "pageStart": page_index,
@@ -160,7 +160,7 @@ def crawl_broker_reports(full_code: str, keywords: list[str], output_dir: str = 
     page_index = 0
     while True:
         logging.info(f"Fetching page: {page_index}")
-        records = fetch_report_page(full_code, page_index, PAGE_SIZE)
+        records = fetch_broker_report_page(full_code, page_index, PAGE_SIZE)
         if not records:
             break
         break_page = False
@@ -174,7 +174,7 @@ def crawl_broker_reports(full_code: str, keywords: list[str], output_dir: str = 
             rec_id = rec.get('id')
             raw_url = rec.get('url')
             if not raw_url or '/report/detail' in raw_url:
-                detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec.get('reportId') or rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
+                detail_url = raw_url or f"{BROKER_REPORT_NONPDF_BASE_URL}?id={rec.get('reportId') or rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
                 html_text = fetch_rendered_html(detail_url)
                 if not html_text:
                     continue
@@ -258,7 +258,7 @@ def crawl_company_announcements(full_code: str, keywords: list[str], output_dir:
     page_index = 0
     while True:
         logging.info(f"Fetching company report page: {page_index}")
-        records = fetch_company_report_page(full_code, page_index, PAGE_SIZE)
+        records = fetch_company_announcement_page(full_code, page_index, PAGE_SIZE)
         if not records:
             break
         break_page = False
@@ -274,7 +274,7 @@ def crawl_company_announcements(full_code: str, keywords: list[str], output_dir:
             raw_url = rec.get('comeinLink') or rec.get('url')
             # HTML detail page when no preview blob
             if not raw_url or '/report/detail' in raw_url:
-                detail_url = raw_url or f"{DETAIL_BASE_URL}?id={rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
+                detail_url = raw_url or f"{BROKER_REPORT_NONPDF_BASE_URL}?id={rec_id}&type={rec.get('type')}&storeId={STORE_ID}"
                 html_text = fetch_rendered_html(detail_url)
                 if not html_text:
                     continue
