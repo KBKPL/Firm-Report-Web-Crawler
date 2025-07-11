@@ -53,3 +53,30 @@ def add_keyword_paragraphs(
             pos = m.end()
         if pos < len(para):
             p2.add_run(para[pos:])
+
+def add_keyword_variant_paragraphs(
+    doc: Document,
+    paragraphs: list[str],
+    variants: list[str],
+    url: str,
+    heading_fmt: str = "Location {idx}"
+):
+    """Append keyword-highlighted paragraphs for keyword variants."""
+    # add hyperlink to source PDF
+    p = doc.add_paragraph()
+    add_hyperlink(p, url)
+    # compile pattern to match any variant
+    pattern = re.compile("|".join(re.escape(v) for v in variants), re.IGNORECASE)
+    for idx, para in enumerate(paragraphs, start=1):
+        doc.add_heading(heading_fmt.format(idx=idx), level=2)
+        p2 = doc.add_paragraph()
+        pos = 0
+        for m in pattern.finditer(para):
+            if m.start() > pos:
+                p2.add_run(para[pos:m.start()])
+            run_h = p2.add_run(m.group())
+            run_h.bold = True
+            run_h.font.highlight_color = WD_COLOR_INDEX.RED
+            pos = m.end()
+        if pos < len(para):
+            p2.add_run(para[pos:])

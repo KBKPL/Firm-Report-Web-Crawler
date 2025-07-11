@@ -8,12 +8,14 @@ import os
 from pathlib import Path
 from src.config import load_config, get_company_config
 from src.crawlers.sinomine import SinomineCrawler
+from src.crawlers.ganfeng import GanfengCrawler
 
 # Project root one level above src
 BASE_DIR = Path(__file__).parent.parent
 
 CRAWLER_MAP = {
     "sinomine": SinomineCrawler,
+    'ganfeng': GanfengCrawler,
 }
 
 def main():
