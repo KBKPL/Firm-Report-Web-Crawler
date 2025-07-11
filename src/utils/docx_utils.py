@@ -12,7 +12,6 @@ from docx.enum.text import WD_COLOR_INDEX
 
 logger = logging.getLogger(__name__)
 
-# Moved from src/crawler.py
 def add_hyperlink(paragraph, url):
     """Insert a hyperlink into a Docx paragraph."""
     part = paragraph.part
