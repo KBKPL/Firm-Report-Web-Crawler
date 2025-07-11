@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from src.crawlers.base import CompanyCrawler
 from src.utils.docx_utils import add_keyword_paragraphs
 from src.utils.http_utils import session
-from src.utils.pdf_utils import download_pdf
+from src.utils.pdf_utils import extract_text_from_pdf
 from src.utils.text_utils import find_paragraphs_with_keyword, sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class SinomineCrawler(CompanyCrawler):
                 pub_date = rec.get("publishDate", "").split()[0]
                 if end_date and pub_date > end_date:
                     continue
-                if start_date and pub_date and pub_date < start_date:
+                if start_date and pub_date < start_date:
                     break_page = True
                     break
                 rec_id = rec.get("id")
@@ -78,27 +78,11 @@ class SinomineCrawler(CompanyCrawler):
                             "&officePreviewType=pdf"
                             "&watermarkTxt="
                         )
-                    pdf_bytes = download_pdf(preview_url)
-                    is_html = pdf_bytes.lstrip().startswith(b'<')
-                    if is_html:
-                        text = pdf_bytes.decode('utf-8', errors='ignore')
-                    else:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-                            tmp_pdf.write(pdf_bytes)
-                            tmp_pdf_path = tmp_pdf.name
-                        tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
-                        tmp_txt.close()
-                        try:
-                            subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
-                            with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
-                                text = f_txt.read()
-                        except Exception:
-                            os.remove(tmp_pdf_path)
-                            os.remove(tmp_txt.name)
-                            continue
-                        finally:
-                            os.remove(tmp_pdf_path)
-                            os.remove(tmp_txt.name)
+                    try:
+                        text = extract_text_from_pdf(preview_url)
+                    except Exception as e:
+                        logger.error(f"Error extracting text from PDF: {e}")
+                        continue
                     url_used = preview_url
                 for kw in keywords:
                     text = sanitize_text(text)
@@ -149,7 +133,7 @@ class SinomineCrawler(CompanyCrawler):
                 pub_date = rec.get("publishDate", "").split()[0]
                 if end_date and pub_date > end_date:
                     continue
-                if start_date and pub_date and pub_date < start_date:
+                if start_date and pub_date < start_date:
                     break_page = True
                     break
                 rec_id = rec.get('reportId') or rec.get('id')
@@ -164,23 +148,11 @@ class SinomineCrawler(CompanyCrawler):
                 # else:
                 #     if 'onlinePreview' in raw_url:
                 preview_url = raw_url
-                pdf_bytes = download_pdf(preview_url)
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-                    tmp_pdf.write(pdf_bytes)
-                    tmp_pdf_path = tmp_pdf.name
-                tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
-                tmp_txt.close()
                 try:
-                    subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
-                    with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
-                        text = f_txt.read()
-                except Exception:
-                    os.remove(tmp_pdf_path)
-                    os.remove(tmp_txt.name)
+                    text = extract_text_from_pdf(preview_url)
+                except Exception as e:
+                    logger.error(f"Error extracting text from PDF: {e}")
                     continue
-                finally:
-                    os.remove(tmp_pdf_path)
-                    os.remove(tmp_txt.name)
                 url_used = preview_url
                 for kw in keywords:
                     text = sanitize_text(text)
@@ -272,24 +244,11 @@ class SinomineCrawler(CompanyCrawler):
                 pdf_url = pdf_page.url
                 pdf_page.close()
                 # download and extract
-                pdf_bytes = download_pdf(pdf_url)
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-                    tmp_pdf.write(pdf_bytes)
-                    tmp_pdf_path = tmp_pdf.name
-                tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
-                tmp_txt.close()
                 try:
-                    subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
-                    with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
-                        text = f_txt.read()
+                    text = extract_text_from_pdf(pdf_url)
                 except Exception as e:
-                    os.remove(tmp_pdf_path)
-                    os.remove(tmp_txt.name)
                     logger.error(f"Failed extract text from PDF: {e}")
                     continue
-                finally:
-                    os.remove(tmp_pdf_path)
-                    os.remove(tmp_txt.name)
                 # scan keywords
                 for kw in keywords:
                     text = sanitize_text(text)

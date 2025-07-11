@@ -1,15 +1,12 @@
 import os
-import subprocess
-import tempfile
 import logging
-import re
 from typing import List, Dict, Optional, Tuple
 from bs4 import BeautifulSoup
 from docx import Document
 
 from src.crawlers.base import CompanyCrawler
 from src.utils.http_utils import session
-from src.utils.pdf_utils import download_pdf
+from src.utils.pdf_utils import extract_text_from_pdf
 from src.utils.text_utils import sanitize_text, find_paragraphs_with_keyword, is_chinese_char, generate_variants
 from src.utils.docx_utils import  add_keyword_variant_paragraphs
 
@@ -32,7 +29,7 @@ class GanfengCrawler(CompanyCrawler):
     def fetch_quarterly_performance_page(self, page: int = 1) -> List[Dict[str, str]]:
         """Fetch one page of quarterly performance metadata via HTML."""
         url = self.financial_base_url.format(page=page)
-        resp = session.get(url)
+        resp = session.get(url, timeout=10)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
         items = soup.find_all("div", class_="iryeji")
@@ -48,7 +45,7 @@ class GanfengCrawler(CompanyCrawler):
             title = a.get_text(strip=True)
             href = a["href"]
             detail_url = href if href.startswith("http") else self.base_url + href
-            resp2 = session.get(detail_url)
+            resp2 = session.get(detail_url, timeout=10)
             resp2.raise_for_status()
             soup2 = BeautifulSoup(resp2.text, "lxml")
             # extract publication date from <div class="dettime">
@@ -66,6 +63,22 @@ class GanfengCrawler(CompanyCrawler):
             pdf_url = pdf_href if pdf_href.startswith("http") else self.base_url + pdf_href
             records.append({"publishDate": pub_date, "title": title, "pdf_url": pdf_url})
         return records
+
+    def _extract_and_find_variants(self, pdf_url: str, keywords: List[str]) -> Dict[str, Tuple[List[str], List[str]]]:
+        """Extract text from PDF URL, sanitize it, and find paragraphs for each keyword variant."""
+        text = extract_text_from_pdf(pdf_url)
+        text = sanitize_text(text)
+        result: Dict[str, Tuple[List[str], List[str]]] = {}
+        for kw in keywords:
+            variants = generate_variants(kw)
+            paras: List[str] = []
+            for v in variants:
+                paras.extend(find_paragraphs_with_keyword(text, v))
+            paras = list(dict.fromkeys(paras))
+            paras = [p for p in paras if any(is_chinese_char(ch) for ch in p)]
+            if paras:
+                result[kw] = (paras, variants)
+        return result
 
     def crawl_quarterly_performance(
         self,
@@ -85,43 +98,25 @@ class GanfengCrawler(CompanyCrawler):
                 break
             break_page = False
             for rec in records:
-                pub_date = rec.get("publishDate")
-                if end_date and pub_date and pub_date > end_date:
-                    continue
-                if start_date and pub_date and pub_date < start_date:
-                    break_page = True
-                    break
-                title = rec.get("title", "")
-                pdf_url = rec.get("pdf_url")
-                pdf_bytes = download_pdf(pdf_url)
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-                    tmp_pdf.write(pdf_bytes)
-                    tmp_pdf_path = tmp_pdf.name
-                tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
-                tmp_txt.close()
                 try:
-                    subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
-                    with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
-                        text = f_txt.read()
-                except Exception as e:
-                    logger.error(f"Error extracting text: {e}")
-                    continue
-                finally:
-                    os.remove(tmp_pdf_path)
-                    os.remove(tmp_txt.name)
-                text = sanitize_text(text)
-                for kw in keywords:
-                    variants = generate_variants(kw)
-                    paras: List[str] = []
-                    for v in variants:
-                        paras.extend(find_paragraphs_with_keyword(text, v))
-                    paras = list(dict.fromkeys(paras))
-                    paras = [p for p in paras if any(is_chinese_char(ch) for ch in p)]
-                    if not paras:
+                    # parse publication date
+                    pub_date = rec.get("publishDate")
+                    # date filtering
+                    if end_date and pub_date > end_date:
                         continue
-                    doc = docs[kw]
-                    doc.add_heading(title, level=1)
-                    add_keyword_variant_paragraphs(doc, paras, variants, pdf_url)
+                    if start_date and pub_date < start_date:
+                        break_page = True
+                        break
+                    title = rec.get("title", "")
+                    pdf_url = rec.get("pdf_url")
+                    results = self._extract_and_find_variants(pdf_url, keywords)
+                    for kw, (paras, variants) in results.items():
+                        doc = docs[kw]
+                        doc.add_heading(title, level=1)
+                        add_keyword_variant_paragraphs(doc, paras, variants, pdf_url)
+                except Exception as e:
+                    logger.error(f"Error processing record {rec.get('title','')}: {e}")
+                    continue
             if break_page:
                 break
             page += 1
@@ -148,7 +143,7 @@ class GanfengCrawler(CompanyCrawler):
             title = font_link.get_text(strip=True)
             href = font_link["href"]
             detail_url = href if href.startswith("http") else self.base_url + href
-            resp2 = session.get(detail_url)
+            resp2 = session.get(detail_url, timeout=10)
             resp2.raise_for_status()
             soup2 = BeautifulSoup(resp2.text, "lxml")
             date_div = soup2.find("div", class_="dettime")
@@ -183,43 +178,25 @@ class GanfengCrawler(CompanyCrawler):
                 break
             break_page = False
             for rec in records:
-                pub_date = rec.get("publishDate")
-                if end_date and pub_date and pub_date > end_date:
-                    continue
-                if start_date and pub_date and pub_date < start_date:
-                    break_page = True
-                    break
-                title = rec.get("title", "")
-                pdf_url = rec.get("pdf_url")
-                pdf_bytes = download_pdf(pdf_url)
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-                    tmp_pdf.write(pdf_bytes)
-                    tmp_pdf_path = tmp_pdf.name
-                tmp_txt = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
-                tmp_txt.close()
                 try:
-                    subprocess.run(["pdftext", tmp_pdf_path, "--out_path", tmp_txt.name], check=True)
-                    with open(tmp_txt.name, "r", encoding="utf-8") as f_txt:
-                        text = f_txt.read()
-                except Exception as e:
-                    logger.error(f"Error extracting text: {e}")
-                    continue
-                finally:
-                    os.remove(tmp_pdf_path)
-                    os.remove(tmp_txt.name)
-                text = sanitize_text(text)
-                for kw in keywords:
-                    variants = generate_variants(kw)
-                    paras: List[str] = []
-                    for v in variants:
-                        paras.extend(find_paragraphs_with_keyword(text, v))
-                    paras = list(dict.fromkeys(paras))
-                    paras = [p for p in paras if any(is_chinese_char(ch) for ch in p)]
-                    if not paras:
+                    # parse publication date
+                    pub_date = rec.get("publishDate")
+                    # date filtering
+                    if end_date and pub_date > end_date:
                         continue
-                    doc = docs[kw]
-                    doc.add_heading(title, level=1)
-                    add_keyword_variant_paragraphs(doc, paras, variants, pdf_url)
+                    if start_date and pub_date < start_date:
+                        break_page = True
+                        break
+                    title = rec.get("title", "")
+                    pdf_url = rec.get("pdf_url")
+                    results = self._extract_and_find_variants(pdf_url, keywords)
+                    for kw, (paras, variants) in results.items():
+                        doc = docs[kw]
+                        doc.add_heading(title, level=1)
+                        add_keyword_variant_paragraphs(doc, paras, variants, pdf_url)
+                except Exception as e:
+                    logger.error(f"Error processing announcement {rec.get('title','')}: {e}")
+                    continue
             if break_page:
                 break
             page += 1
