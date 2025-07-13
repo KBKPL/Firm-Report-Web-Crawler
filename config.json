@@ -13,5 +13,10 @@
     "base_url": "https://www.ganfenglithium.com",
     "financial_base_url": "https://www.ganfenglithium.com/index.php/Home/Index/ir1/p/{page}.html",
     "company_announcement_url": "https://www.ganfenglithium.com/index.php/Home/Index/ir4/p/{page}.html"
+  },
+  "chengxin": {
+    "full_code": "002240",
+    "page_size": 10,
+    "quarterly_url": "https://www.cxlithium.com/download/1712104669691871232-{page}-10.html"
   }
 }

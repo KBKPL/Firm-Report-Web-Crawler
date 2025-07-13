@@ -3,6 +3,7 @@ DOCX utilities: read/write paragraphs to/from DOCX.
 """
 import sys
 import logging
+import os
 from docx import Document
 import re
 from docx.oxml import OxmlElement
@@ -80,3 +81,18 @@ def add_keyword_variant_paragraphs(
             pos = m.end()
         if pos < len(para):
             p2.add_run(para[pos:])
+
+def save_crawler_docx(
+    doc: Document,
+    full_code: str,
+    keyword: str,
+    section_label: str,
+    output_dir: str
+) -> str:
+    """Save and log a crawler-generated DOCX."""
+    safe_kw = keyword.replace(" ", "_")
+    out_name = f"{full_code}_{safe_kw}_{section_label}.docx"
+    path = os.path.join(output_dir, out_name)
+    doc.save(path)
+    logger.info(f"Saved combined DOCX for keyword {keyword} [{section_label}]: {out_name}")
+    return path

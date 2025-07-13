@@ -6,7 +6,7 @@ from docx import Document
 from bs4 import BeautifulSoup
 
 from src.crawlers.base import CompanyCrawler
-from src.utils.docx_utils import add_keyword_paragraphs
+from src.utils.docx_utils import add_keyword_paragraphs, save_crawler_docx
 from src.utils.http_utils import session
 from src.utils.pdf_utils import extract_text_from_pdf
 from src.utils.text_utils import find_paragraphs_with_keyword, sanitize_text
@@ -97,13 +97,9 @@ class SinomineCrawler(CompanyCrawler):
             if len(records) < self.page_size or break_page:
                 break
             page_index += 1
-        # save docs for broker reports
+        section_label = self.SECTIONS["3"][0]
         for kw, doc in docs.items():
-            safe_kw = kw.replace(" ", "_")
-            out_name = f"{self.full_code}_{safe_kw}_券商报告.docx"
-            path = os.path.join(output_dir, out_name)
-            doc.save(path)
-            logger.info(f"Saved combined DOCX for keyword {kw} [券商报告]: {out_name}")
+            path = save_crawler_docx(doc, self.full_code, kw, section_label, output_dir)
             generated[kw] = path
         return generated
 
@@ -167,13 +163,10 @@ class SinomineCrawler(CompanyCrawler):
             if len(records) < self.page_size or break_page:
                 break
             page_index += 1
-        # save docs
+        section_label = self.SECTIONS["2"][0]
         for kw, doc in docs.items():
-            safe_kw = kw.replace(" ", "_")
-            out_name = f"{self.full_code}_{safe_kw}_公司公告.docx"
-            doc.save(os.path.join(output_dir, out_name))
-            logger.info(f"Saved combined DOCX for keyword {kw} [公司公告]: {out_name}")
-            generated[kw] = os.path.join(output_dir, out_name)
+            path = save_crawler_docx(doc, self.full_code, kw, section_label, output_dir)
+            generated[kw] = path
         return generated
 
     def crawl_quarterly_performance(
@@ -259,13 +252,10 @@ class SinomineCrawler(CompanyCrawler):
                     doc.add_heading(f"{self.full_code}_{kw}_{year}_{rpt_cn}_{pub}", level=1)
                     add_keyword_paragraphs(doc, paras, kw, pdf_url)
             browser.close()
-        # save docs
+        section_label = self.SECTIONS["1"][0]
         for kw, doc in docs.items():
-            safe = kw.replace(' ', '_')
-            out = f"{self.full_code}_{safe}_季度业绩.docx"
-            doc.save(os.path.join(output_dir, out))
-            logger.info(f"Saved combined DOCX for keyword {kw} [季度业绩]: {out}")
-            generated[kw] = os.path.join(output_dir, out)
+            path = save_crawler_docx(doc, self.full_code, kw, section_label, output_dir)
+            generated[kw] = path
         return generated
 
     def fetch_broker_report_page(self, page_index: int = 0) -> list[dict]:

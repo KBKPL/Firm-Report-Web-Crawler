@@ -8,7 +8,7 @@ from src.crawlers.base import CompanyCrawler
 from src.utils.http_utils import session
 from src.utils.pdf_utils import extract_text_from_pdf
 from src.utils.text_utils import sanitize_text, find_paragraphs_with_keyword, is_chinese_char, generate_variants
-from src.utils.docx_utils import  add_keyword_variant_paragraphs
+from src.utils.docx_utils import add_keyword_variant_paragraphs, save_crawler_docx
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +120,9 @@ class GanfengCrawler(CompanyCrawler):
             if break_page:
                 break
             page += 1
+        section_label = self.SECTIONS["1"][0]
         for kw, doc in docs.items():
-            safe_kw = kw.replace(" ", "_")
-            out_name = f"{self.full_code}_{safe_kw}_quarterly_performance.docx"
-            path = os.path.join(output_dir, out_name)
-            doc.save(path)
+            path = save_crawler_docx(doc, self.full_code, kw, section_label, output_dir)
             generated[kw] = path
         return generated
 
@@ -200,10 +198,8 @@ class GanfengCrawler(CompanyCrawler):
             if break_page:
                 break
             page += 1
+        section_label = self.SECTIONS["2"][0]
         for kw, doc in docs.items():
-            safe_kw = kw.replace(" ", "_")
-            out_name = f"{self.full_code}_{safe_kw}_company_announcements.docx"
-            path = os.path.join(output_dir, out_name)
-            doc.save(path)
+            path = save_crawler_docx(doc, self.full_code, kw, section_label, output_dir)
             generated[kw] = path
         return generated
