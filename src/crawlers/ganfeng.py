@@ -16,7 +16,7 @@ class GanfengCrawler(CompanyCrawler):
     """Crawler for Ganfeng Lithium quarterly reports and announcements."""
     SECTIONS = {
         "1": ("业绩报告", "quarterly performance", "crawl_quarterly_performance"),
-        "2": ("公司公告", "company announcements", "crawl_company_announcements"),
+        "2": ("公告及通函", "company announcements", "crawl_company_announcements"),
     }
 
     def __init__(self, full_code: str, config: dict):

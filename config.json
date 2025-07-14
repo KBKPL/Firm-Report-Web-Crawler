@@ -9,7 +9,7 @@
     "page_size": 10
   },
   "ganfeng": {
-    "full_code": "ganfeng",
+    "full_code": "002460",
     "base_url": "https://www.ganfenglithium.com",
     "financial_base_url": "https://www.ganfenglithium.com/index.php/Home/Index/ir1/p/{page}.html",
     "company_announcement_url": "https://www.ganfenglithium.com/index.php/Home/Index/ir4/p/{page}.html"

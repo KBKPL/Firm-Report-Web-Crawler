@@ -37,8 +37,6 @@ class SinomineCrawler(CompanyCrawler):
         end_date: Optional[str] = None,
     ) -> Dict[str, str]:
         """Crawl broker reports and return mapping of keyword to output file path."""
-        import subprocess
-        import tempfile
         from src.utils.html_utils import fetch_rendered_html
 
         os.makedirs(output_dir, exist_ok=True)
