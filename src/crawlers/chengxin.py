@@ -57,10 +57,7 @@ class ChengxinCrawler(CompanyCrawler):
     def fetch_quarterly_performance_page(self, page_index: int) -> List[Dict[str, str]]:
         """Fetch one page of quarterly performance metadata."""
         # build URL for page
-        if page_index == 0:
-            url = "https://www.cxlithium.com/download/1712104669691871232-0-10.html"
-        else:
-            url = self.quarterly_url.format(page_index * self.page_size)
+        url = self.quarterly_url.format(page=(page_index * self.page_size))
         logger.info(f"Fetching page: {url}")
         resp = session.get(url, timeout=10)
         resp.raise_for_status()
