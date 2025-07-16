@@ -55,6 +55,32 @@ class ChengxinCrawler(CompanyCrawler):
             if os.path.exists(tmp_txt.name):
                 os.remove(tmp_txt.name)
 
+    def _parse_file_list_item(self, item) -> Optional[Dict[str, str]]:
+        """Extract title, date, and PDF URL from an item."""
+        title_el = item.find("h1", class_="e_h1-4 s_subtitle")
+        date_el = item.find("p", class_="e_timeFormat-18 s_title")
+        if not title_el or not date_el:
+            logger.warning("Missing title or date; skipping item.")
+            return None
+        title = title_el.get_text(strip=True)
+        pub_date = date_el.get_text(strip=True)
+        input_tag = item.find("input", attrs={"name": "fileList"})
+        if not input_tag or not input_tag.get("value"):
+            logger.warning(f"No fileList JSON for {title}")
+            return None
+        raw = input_tag["value"]
+        try:
+            files = json.loads(html.unescape(raw))
+            file_info = files[0]
+            pdf_url = file_info.get("fileUrl")
+            if not pdf_url:
+                logger.warning(f"No PDF URL in fileList for {title}")
+                return None
+            return {"title": title, "publishDate": pub_date, "pdf_url": pdf_url}
+        except Exception as e:
+            logger.error(f"Failed parsing fileList for {title}: {e}")
+            return None
+
     def fetch_quarterly_performance_page(self, page_index: int) -> List[Dict[str, str]]:
         """Fetch one page of quarterly performance metadata."""
         # build URL for page
@@ -66,22 +92,10 @@ class ChengxinCrawler(CompanyCrawler):
         items = soup.find_all("div", class_="cbox-2 p_loopitem")
         records: List[Dict[str, str]] = []
         for item in items:
-            title = item.find("h1", class_="e_h1-4 s_subtitle").get_text(strip=True)
-            pub_date = item.find("p", class_="e_timeFormat-18 s_title").get_text(strip=True)
-            input_tag = item.find("input", attrs={"name": "fileList"})
-            if not input_tag or not input_tag.get("value"):
-                logger.warning(f"No fileList JSON for {title}")
-                continue
-            raw = input_tag["value"]
-            unesc = html.unescape(raw)
-            try:
-                files = json.loads(unesc)
-                file_info = files[0]
-                pdf_url = file_info.get("fileUrl")
-            except Exception as e:
-                logger.error(f"Failed parsing fileList for {title}: {e}")
-                continue
-            records.append({"title": title, "publishDate": pub_date, "pdf_url": pdf_url})
+            rec = self._parse_file_list_item(item)
+            if rec:
+                records.append(rec)
+        logger.info(f"Quarterly page {page_index} returned {len(records)} records")
         return records
 
     def fetch_company_announcements_page(self, page_index: int) -> List[Dict[str, str]]:
@@ -96,22 +110,10 @@ class ChengxinCrawler(CompanyCrawler):
         items = soup.find_all("div", class_="cbox-2 p_loopitem")
         records: List[Dict[str, str]] = []
         for item in items:
-            title = item.find("h1", class_="e_h1-4 s_subtitle").get_text(strip=True)
-            pub_date = item.find("p", class_="e_timeFormat-18 s_title").get_text(strip=True)
-            input_tag = item.find("input", attrs={"name": "fileList"})
-            if not input_tag or not input_tag.get("value"):
-                logger.warning(f"No fileList JSON for {title}")
-                continue
-            raw = input_tag["value"]
-            unesc = html.unescape(raw)
-            try:
-                files = json.loads(unesc)
-                file_info = files[0]
-                pdf_url = file_info.get("fileUrl")
-            except Exception as e:
-                logger.error(f"Failed parsing fileList for {title}: {e}")
-                continue
-            records.append({"title": title, "publishDate": pub_date, "pdf_url": pdf_url})
+            rec = self._parse_file_list_item(item)
+            if rec:
+                records.append(rec)
+        logger.info(f"Announcements page {page_index} returned {len(records)} records")
         return records
 
     def crawl_quarterly_performance(
@@ -132,23 +134,30 @@ class ChengxinCrawler(CompanyCrawler):
                 break
             break_page = False
             for rec in records:
-                title = rec.get("title", "")
-                pub_date = rec.get("publishDate", "")
-                if end_date and pub_date > end_date:
-                    continue
-                if start_date and pub_date < start_date:
-                    break_page = True
-                    break
-                pdf_url = rec.get("pdf_url")
-                text = self._extract_text_from_chengxin_pdf(pdf_url)
-                text = sanitize_text(text)
-                for kw in keywords:
-                    paras = find_paragraphs_with_keyword(text, kw)
-                    if not paras:
+                try:
+                    title = rec.get("title", "")
+                    pub_date = rec.get("publishDate", "")
+                    if end_date and pub_date > end_date:
                         continue
-                    doc = docs[kw]
-                    doc.add_heading(f"{pub_date}_{title}", level=1)
-                    add_keyword_paragraphs(doc, paras, kw, pdf_url)
+                    if start_date and pub_date < start_date:
+                        break_page = True
+                        break
+                    pdf_url = rec.get("pdf_url")
+                    if not pdf_url:
+                        logger.warning(f"No PDF URL for record {title}, skipping.")
+                        continue
+                    text = self._extract_text_from_chengxin_pdf(pdf_url)
+                    text = sanitize_text(text)
+                    for kw in keywords:
+                        paras = find_paragraphs_with_keyword(text, kw)
+                        if not paras:
+                            continue
+                        doc = docs[kw]
+                        doc.add_heading(f"{pub_date}_{title}", level=1)
+                        add_keyword_paragraphs(doc, paras, kw, pdf_url)
+                except Exception as e:
+                    logger.error(f"Error processing record {rec.get('title','')}: {e}")
+                    continue
             if break_page or len(records) < self.page_size:
                 break
             page_index += 1
@@ -176,23 +185,30 @@ class ChengxinCrawler(CompanyCrawler):
                 break
             break_page = False
             for rec in records:
-                title = rec.get("title", "")
-                pub_date = rec.get("publishDate", "")
-                if end_date and pub_date > end_date:
-                    continue
-                if start_date and pub_date < start_date:
-                    break_page = True
-                    break
-                pdf_url = rec.get("pdf_url")
-                text = self._extract_text_from_chengxin_pdf(pdf_url)
-                text = sanitize_text(text)
-                for kw in keywords:
-                    paras = find_paragraphs_with_keyword(text, kw)
-                    if not paras:
+                try:
+                    title = rec.get("title", "")
+                    pub_date = rec.get("publishDate", "")
+                    if end_date and pub_date > end_date:
                         continue
-                    doc = docs[kw]
-                    doc.add_heading(f"{pub_date}_{title}", level=1)
-                    add_keyword_paragraphs(doc, paras, kw, pdf_url)
+                    if start_date and pub_date < start_date:
+                        break_page = True
+                        break
+                    pdf_url = rec.get("pdf_url")
+                    if not pdf_url:
+                        logger.warning(f"No PDF URL for announcement {title}, skipping.")
+                        continue
+                    text = self._extract_text_from_chengxin_pdf(pdf_url)
+                    text = sanitize_text(text)
+                    for kw in keywords:
+                        paras = find_paragraphs_with_keyword(text, kw)
+                        if not paras:
+                            continue
+                        doc = docs[kw]
+                        doc.add_heading(f"{pub_date}_{title}", level=1)
+                        add_keyword_paragraphs(doc, paras, kw, pdf_url)
+                except Exception as e:
+                    logger.error(f"Error processing announcement {rec.get('title','')}: {e}")
+                    continue
             if break_page or len(records) < self.page_size:
                 break
             page_index += 1
