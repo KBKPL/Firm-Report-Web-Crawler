@@ -85,7 +85,6 @@ class ChengxinCrawler(CompanyCrawler):
         """Fetch one page of quarterly performance metadata."""
         # build URL for page
         url = self.quarterly_url.format(page=(page_index * self.page_size))
-        logger.info(f"Fetching page: {url}")
         resp = session.get(url, timeout=10)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
@@ -95,7 +94,6 @@ class ChengxinCrawler(CompanyCrawler):
             rec = self._parse_file_list_item(item)
             if rec:
                 records.append(rec)
-        logger.info(f"Quarterly page {page_index} returned {len(records)} records")
         return records
 
     def fetch_company_announcements_page(self, page_index: int) -> List[Dict[str, str]]:
@@ -113,7 +111,6 @@ class ChengxinCrawler(CompanyCrawler):
             rec = self._parse_file_list_item(item)
             if rec:
                 records.append(rec)
-        logger.info(f"Announcements page {page_index} returned {len(records)} records")
         return records
 
     def crawl_quarterly_performance(
