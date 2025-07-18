@@ -18,6 +18,8 @@
     "full_code": "002240",
     "page_size": 10,
     "quarterly_url": "https://www.cxlithium.com/download/1712104669691871232-{page}-10.html",
-    "company_announcement_url": "https://www.cxlithium.com/companyfile/6/{page}"
+    "company_announcement_url": "https://www.cxlithium.com/companyfile/6/{page}",
+    "dynamic_url": "https://www.cxlithium.com/news/1711648778659782656-{offset}-5.html",
+    "dynamic_page_size": 5
   }
 }

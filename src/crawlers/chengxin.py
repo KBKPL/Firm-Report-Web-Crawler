@@ -21,6 +21,7 @@ class ChengxinCrawler(CompanyCrawler):
     SECTIONS = {
         "1": ("业绩报告", "quarterly performance", "crawl_quarterly_performance"),
         "2": ("ESG报告", "company announcements", "crawl_company_announcements"),
+        "3": ("动态", "news", "crawl_dynamic"),
     }
 
     def __init__(self, full_code: str, config: dict):
@@ -28,6 +29,8 @@ class ChengxinCrawler(CompanyCrawler):
         self.page_size = config.get("page_size", 10)
         self.quarterly_url = config.get("quarterly_url")
         self.announcement_url = config.get("company_announcement_url")
+        self.dynamic_url = config.get("dynamic_url")
+        self.dynamic_page_size = config.get("dynamic_page_size", 5)
 
     def _download_chengxin_pdf(self, url: str) -> bytes:
         """Download PDF with encoding and referer header for Chengxin site."""
@@ -111,6 +114,30 @@ class ChengxinCrawler(CompanyCrawler):
             rec = self._parse_file_list_item(item)
             if rec:
                 records.append(rec)
+        logger.info(f"Announcements page {page_index} returned {len(records)} records")
+        return records
+
+    def fetch_dynamic_page(self, page_index: int) -> List[Dict[str, str]]:
+        """Fetch one page of 动态 (news) items."""
+        offset = page_index * self.dynamic_page_size
+        url = self.dynamic_url.format(offset=offset)
+        resp = session.get(url, timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "lxml")
+        items = soup.find_all("div", class_="cbox-1 p_loopitem")
+        records: List[Dict[str, str]] = []
+        for item in items:
+            a_tag = item.find("a", href=True)
+            date_tag = item.find("p", class_="e_timeFormat-15 s_title")
+            if not a_tag or not date_tag:
+                logger.warning("Missing link or date in dynamic item; skipping")
+                continue
+            title = a_tag.get_text(strip=True)
+            pub_date = date_tag.get_text(strip=True)
+            rel = a_tag["href"]
+            full_url = urllib.parse.urljoin(self.dynamic_url, rel)
+            records.append({"title": title, "publishDate": pub_date, "url": full_url})
+        logger.info(f"Dynamic page {page_index} returned {len(records)} records")
         return records
 
     def crawl_quarterly_performance(
@@ -210,6 +237,52 @@ class ChengxinCrawler(CompanyCrawler):
                 break
             page_index += 1
         section_label = self.SECTIONS["2"][0]
+        for kw, doc in docs.items():
+            path = save_crawler_docx(doc, self.full_code, kw, section_label, output_dir)
+            generated[kw] = path
+        return generated
+
+    def crawl_dynamic(
+        self,
+        keywords: List[str],
+        output_dir: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, str]:
+        os.makedirs(output_dir, exist_ok=True)
+        docs = {kw: Document() for kw in keywords}
+        generated: Dict[str, str] = {}
+        page_index = 0
+        while True:
+            logger.info(f"Fetching dynamic page: {page_index}")
+            records = self.fetch_dynamic_page(page_index)
+            if not records:
+                break
+            break_page = False
+            for rec in records:
+                title = rec.get("title", "")
+                pub_date = rec.get("publishDate", "")
+                if end_date and pub_date > end_date:
+                    continue
+                if start_date and pub_date < start_date:
+                    break_page = True
+                    break
+                url = rec.get("url")
+                resp = session.get(url, timeout=10)
+                resp.raise_for_status()
+                soup = BeautifulSoup(resp.text, "lxml")
+                text = sanitize_text(soup.get_text("\n\n"))
+                for kw in keywords:
+                    paras = find_paragraphs_with_keyword(text, kw)
+                    if not paras:
+                        continue
+                    doc = docs[kw]
+                    doc.add_heading(f"{pub_date}_{title}", level=1)
+                    add_keyword_paragraphs(doc, paras, kw, url)
+            if break_page or len(records) < self.dynamic_page_size:
+                break
+            page_index += 1
+        section_label = self.SECTIONS["3"][0]
         for kw, doc in docs.items():
             path = save_crawler_docx(doc, self.full_code, kw, section_label, output_dir)
             generated[kw] = path
