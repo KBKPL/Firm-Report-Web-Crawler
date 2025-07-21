@@ -21,7 +21,7 @@ class ChengxinCrawler(CompanyCrawler):
     SECTIONS = {
         "1": ("业绩报告", "quarterly performance", "crawl_quarterly_performance"),
         "2": ("ESG报告", "company announcements", "crawl_company_announcements"),
-        "3": ("动态", "news", "crawl_dynamic"),
+        "3": ("盛新动态", "news", "crawl_dynamic"),
     }
 
     def __init__(self, full_code: str, config: dict):
