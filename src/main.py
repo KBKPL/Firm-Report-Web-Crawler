@@ -10,6 +10,7 @@ from src.config import load_config, get_company_config
 from src.crawlers.sinomine import SinomineCrawler
 from src.crawlers.ganfeng import GanfengCrawler
 from src.crawlers.chengxin import ChengxinCrawler
+from src.crawlers.yahua import YahuaCrawler
 
 # Project root one level above src
 BASE_DIR = Path(__file__).parent.parent
@@ -18,6 +19,7 @@ CRAWLER_MAP = {
     "sinomine": SinomineCrawler,
     "ganfeng": GanfengCrawler,
     "chengxin": ChengxinCrawler,
+    "yahua": YahuaCrawler,
 }
 
 def main():

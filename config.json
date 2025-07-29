@@ -21,5 +21,15 @@
     "company_announcement_url": "https://www.cxlithium.com/companyfile/6/{page}",
     "dynamic_url": "https://www.cxlithium.com/news/1711648778659782656-{offset}-5.html",
     "dynamic_page_size": 5
+  },
+  "yahua": {
+    "full_code": "002497",
+    "page_size": 10,
+    "base_url": "https://www.scyahua.com/",
+    "quarterly_url": "https://www.scyahua.com/investor.aspx?t=53&page={page}",
+    "company_announcement_url": "https://www.scyahua.com/investor.aspx?t=54&page={page}",
+    "broker_report_url": "https://www.scyahua.com/investor.aspx?t=62&page={page}",
+    "company_news_url": "https://www.scyahua.com/news.aspx?t=14&page={page}",
+    "company_news_page_size": 4
   }
 }
